@@ -16,13 +16,13 @@
  */
 
 #include <ADC.h>
-#include <SD.h>
+//#include <SD.h>
 
 // Handles most of the signal processing
 #include "arduinoFFT.h"
 
 #define EMG_PIN A0                        // Analog pin connected to EMG sensor
-#define chipSelect BUILTIN_SDCARD         // Identify SD card for writing
+//#define chipSelect BUILTIN_SDCARD         // Identify SD card for writing
 #define EMG_FREQ 1024                     // EMG sampling frequency
 #define FFT_SIZE 1024                     // Size of FFT buffer (~1.0s)
 #define RMS_SIZE 128                      // Size of RMS buffer (~0.125s)
@@ -32,7 +32,7 @@
 
 // Declare arduino objects
 ADC *adc = new ADC();
-arduinoFFT fft_obj = new arduinoFFT();
+arduinoFFT fft_obj = arduinoFFT();
 
 uint32_t ADC0_BUFFER[BUFF_SIZE];          // Holds previous values for rolling average
 uint32_t adc_count = 0;                   // Holds the current index for ADC0_BUFFER
@@ -50,15 +50,18 @@ double vimag[FFT_SIZE];                   // imaginary component of fft function
 
 
 uint32_t RMS_sample_count = 0;            // current index for RMS ping pong buffer
-uint32_t process_RMS = 0;                 // flag to indicate that RMS should be processed
 uint32_t RMS_buff_0[RMS_SIZE];            // RMS ping pong buffer 0
 uint32_t RMS_buff_1[RMS_SIZE];            // RMS ping pong buffer 1
 uint32_t *sample_RMS_buff = RMS_buff_0;   // RMS buffer currently receiving samples
 uint32_t *process_RMS_buff = RMS_buff_0;  // RMS buffer currently being processed
-uint32_t rep_trigger = 0;                 // Tracks if a repetition has been performed
 
 
+/* Control Signals */
+uint32_t process_RMS = 0;                 // flag to indicate that RMS should be processed
+uint32_t RMS_delay = 0;                // timer to delay before allowing process_rms
 uint32_t rep = 0;                         // Repetition count
+uint32_t startup_counter = 4096;          // Wait four seconds before calculating reps
+uint32_t rep_trigger = 0;                 // Tracks if a repetition has been performed
 
 
 /*
@@ -69,40 +72,60 @@ uint32_t rep = 0;                         // Repetition count
  */
 unsigned int calculate_RMS(uint32_t *buff, unsigned int size);
 
+/*
+ * @param *buff0 - initiali buffer to clear
+ * @param *buff1 - second buffer to clear
+ * @param size - number of indices to clear
+ */
+ void clear_buffers(void *buff0, void *buff1, uint32_t size);
+
+/*
+ * @param *buff - pointer to buffer containing frequency magnitude
+ * @param size - size of buffer 
+ * @param fs - sampling frequency
+ */
+uint32_t calculate_median_frequency(double *buff, uint32_t size, uint32_t fs);
+
 void setup() {
-  // put your setup code here, to run once:
 
   // Initialize serial for debugging
   Serial.begin(115200);
   while(!Serial);  
 
-  Serial.println("Initializing SD card...");
-
-  // Try to initialize SD card
-  
-  // Initialize SD card
-  if (!SD.begin(chipSelect)) {
-    Serial.println("Card failed, or not present");
-    while (1);
-  }
-  Serial.println("card initialized.");
+//  Serial.println("Initializing SD card...");
+//
+//  
+//  // Initialize SD card
+//  if (!SD.begin(chipSelect)) {
+//    Serial.println("Card failed, or not present");
+//    while (1);
+//  }
+//  Serial.println("card initialized.");
 
   // Initialize ADC
   pinMode(EMG_PIN, INPUT);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(LED_isr_trigger, OUTPUT);
-  digitalWrite(LED_isr_trigger, isr_poll_flag);
+  digitalWrite(LED_isr_trigger, 1);
   digitalWrite(LED_BUILTIN, HIGH);
   adc->adc0->setAveraging(0);
   adc->adc0->setResolution(10);
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_HIGH_SPEED);
   adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_HIGH_SPEED);
 
+
+  // clear the average buffer
+  memset(ADC0_BUFFER, 480, sizeof(unsigned int) * BUFF_SIZE);
+  
   // Initialize the timer to EMG Frequency (1024Hz) and enable ISR
   adc->adc0->stopTimer();
   adc->adc0->startSingleRead(EMG_PIN);
   adc->adc0->enableInterrupts(adc0_isr);
   adc->adc0->startTimer(EMG_FREQ);
+
+  // Initialize FFT
+  clear_buffers(vreal, vimag, FFT_SIZE*sizeof(double));
+
 
 
 }
@@ -114,18 +137,70 @@ void loop() {
   if(process_RMS)
   {
     val = calculate_RMS(process_RMS_buff, RMS_SIZE) ;
-    if(val > 4)
+    if(val > 8)
     {
-      Serial.print("REP");
-      Serial.println(rep++);
+      Serial.println("REP");
+      rep++;
+      rep_trigger = 1;
+      RMS_delay = 2048;
     }
     
     process_RMS = 0;
   }
 
+  // process fft for muscle fatigue
   if(rep_trigger)
   {
-    // Process fft for muscle fatigue value
+
+    // disable next repetition
+    rep_trigger = 0;
+
+    clear_buffers(vreal, vimag, FFT_SIZE*sizeof(double));
+    
+    // fill vreal array
+    for(uint32_t i = 0; i < FFT_SIZE; i++)
+      vreal[i] = process_fft_buff[i];
+
+    // apply window to signal
+    fft_obj.Windowing(vreal, FFT_SIZE, FFT_WIN_TYP_HANN, FFT_FORWARD);
+
+    // compute fft
+    fft_obj.Compute(vreal, vimag, FFT_SIZE, FFT_FORWARD);
+
+    // translate to magnitude
+    fft_obj.ComplexToMagnitude(vreal, vimag, FFT_SIZE);
+
+/*
+    // determine if majority component is noise
+    uint32_t largest_comp = fft_obj.MajorPeak(vreal, FFT_SIZE, EMG_FREQ);
+
+    // remove 60hz noise and sidebands
+    switch(largest_comp)
+    {
+      case 58:
+      case 59:
+      case 60:
+      case 61:
+      case 62:
+          vreal[59] = 0;
+          vreal[60] = 0;
+          vreal[61] = 0;
+          vreal[62] = 0;
+          vreal[63] = 0;
+
+          vreal[119] = 0;
+          vreal[120] = 0;
+          vreal[121] = 0;
+      default: break;
+    }*/
+
+
+    // Calculate median frequency
+    Serial.println(calculate_median_frequency(vreal, FFT_SIZE, EMG_FREQ));
+
+
+    // clear the buffers :(
+    clear_buffers(vreal, vimag, FFT_SIZE*sizeof(double));
   }
 
 }
@@ -153,12 +228,16 @@ void adc0_isr()
   // Read the adc value into the active buffer
   sample_fft_buff[fft_sample_count++] = sample;
 
+  if(startup_counter > 0) startup_counter--;
+  if(RMS_delay > 0) RMS_delay--;
+
   // Swap buffers if sample count is full
   if(RMS_sample_count == RMS_SIZE)
   {
     sample_RMS_buff = (sample_RMS_buff == RMS_buff_0) ? RMS_buff_1 : RMS_buff_0;
     process_RMS_buff = (sample_RMS_buff == RMS_buff_0) ? RMS_buff_0 : RMS_buff_1;
-    process_RMS = 1;
+    if(startup_counter == 0 && RMS_delay == 0)
+      process_RMS = 1;
     RMS_sample_count = 0; 
   }
 
@@ -190,7 +269,41 @@ unsigned int calculate_RMS(uint32_t *buff, unsigned int size)
 }
 
 
+ void clear_buffers(void *buff0, void *buff1, uint32_t size)
+ {
+  memset(buff0, 0, size);
+  memset(buff1, 0, size);
+ }
 
+
+uint32_t calculate_median_frequency(double *buff, uint32_t size, uint32_t fs)
+{
+  // calculate frequency/index
+  double quant_step = fs/size;
+  
+  // FFT result is mirrored, so we can ignore the back half
+  uint32_t sum_freq = 0;
+  double weighted_sum = 0;
+  for(uint32_t i = 0; i<size/2; i++)
+  {
+    // calculate sum of frequency bins
+    sum_freq += i*quant_step;
+
+    // calculate the weighted sum of each frequency
+    weighted_sum += i*quant_step*buff[i];
+
+  }
+//
+//  for(uint32_t i = 0; i<size/2; i++)
+//  {
+//    Serial.println(buff[i]);}
+
+//  Serial.println(sum_freq);
+//  Serial.println(weighted_sum);
+
+  // return quotient of sums
+  return (uint32_t) (weighted_sum/sum_freq);
+}
 
 /*
 void adc0_isr()
