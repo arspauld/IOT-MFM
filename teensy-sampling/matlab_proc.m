@@ -11,17 +11,20 @@ close all;
 %% Load EMG Data
 
 Fs = 1024;
-LOG = csvread('log6.csv');
+LOG = csvread('log13.csv');
 LOG = LOG(1:10*Fs);
 % LOG = LOG - mean(LOG);
 figure();
 subplot(2, 1, 1)
 plot(LOG), title 'Raw EMG Data', xlabel 'Index', ylabel 'Magnitude', axis([ 0 10240 min(LOG) max(LOG)])
 
-LOG_NORM = LOG-mean(LOG);
-MAV = zeros(1, length(LOG)/(Fs/10));
+% mav_size = Fs/10;
+mav_size = 128;
+
+LOG_NORM = LOG;%-mean(LOG);
+MAV = zeros(1, length(LOG)/(mav_size));
 for i=1:length(MAV)
-    MAV(i) = (1/(Fs/10)*sum((LOG_NORM((i-1)*Fs/10+1 : i*Fs/10)).^2))^(1/2);
+    MAV(i) = (1/(mav_size)*sum((LOG_NORM((i-1)*mav_size+1 : i*mav_size)).^2))^(1/2);
 end
 subplot(2, 1, 2)
 plot(MAV), title 'MAV';
@@ -52,7 +55,7 @@ ylabel 'Magnitude'
 NFFT=256;FS=1024;
 
 %%
-is=1500;
+is=1152;
 ii=is:(is+NFFT-1);
 figure
 e=detrend(LOG(ii));
@@ -86,7 +89,7 @@ F3=abs(fft(es2.*hanning(NFFT)));
 plot(f-512,fftshift(F3)), title 'Peak2'
 
 %%
-is4=1;
+is4=3540;
 ii4=is4:(is4+NFFT-1);
 figure
 es3=detrend(LOG(ii4));
