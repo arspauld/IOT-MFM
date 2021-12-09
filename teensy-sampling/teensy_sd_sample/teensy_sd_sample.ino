@@ -89,8 +89,13 @@ uint32_t calculate_median_frequency(double *buff, uint32_t size, uint32_t fs);
 void setup() {
 
   // Initialize serial for debugging
+
   Serial.begin(115200);
   while(!Serial);  
+
+  // Initialize serial for bluetooth
+//  Serial7.begin(115200);
+//  while(!Serial7);
 
 //  Serial.println("Initializing SD card...");
 //
@@ -131,8 +136,7 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-//  Serial.println("test");
+
   uint32_t val = 0;
   if(process_RMS)
   {
@@ -197,6 +201,7 @@ void loop() {
 
     // Calculate median frequency
     Serial.println(calculate_median_frequency(vreal, FFT_SIZE, EMG_FREQ));
+//    Serial7.println(calculate_median_frequency(vreal, FFT_SIZE, EMG_FREQ));
 
 
     // clear the buffers :(
@@ -293,40 +298,7 @@ uint32_t calculate_median_frequency(double *buff, uint32_t size, uint32_t fs)
     weighted_sum += i*quant_step*buff[i];
 
   }
-//
-//  for(uint32_t i = 0; i<size/2; i++)
-//  {
-//    Serial.println(buff[i]);}
-
-//  Serial.println(sum_freq);
-//  Serial.println(weighted_sum);
 
   // return quotient of sums
   return (uint32_t) (weighted_sum/sum_freq);
 }
-
-/*
-void adc0_isr()
-{
-
-  isr_poll_flag = !isr_poll_flag;
-  digitalWrite(LED_isr_trigger, isr_poll_flag);
-  String data = "";
-  uint16_t adc_val = adc->adc0->readSingle();
-  if(adc_count < BUFF_SIZE || !write_needed)
-  {
-    ADC0_BUFFER[adc_count++ % BUFF_SIZE] = adc_val;
-  } else if (write_needed)
-  {
-    write_needed = 0;
-    File dataFile = SD.open("log13.csv", FILE_WRITE);
-    for(int i=0; i<BUFF_SIZE; i++)
-      dataFile.println(String(ADC0_BUFFER[i]));
-    digitalWrite(LED_BUILTIN, LOW);
-    dataFile.close();
-    //Serial.println(String(adc_val));
-  }
-  
-  
-  asm("DSB");  
-}*/
