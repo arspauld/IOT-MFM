@@ -17,22 +17,24 @@
  * 
  */
 
+// server and characteristic uuid
+#define SERVICE_UUID          "6df57bea-58e0-11ec-bf63-0242ac130002"
+#define CHARACTERISTIC_UUID   "6df57e1a-58e0-11ec-bf63-0242ac130002"
+
+
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-// server and characteristic pointers
-BLEServer *pServer = NULL;
-BLECharacteristic *pCharacteristic = NULL;
+BLEServer* pServer = NULL;
+BLECharacteristic* pCharacteristic = NULL;
 bool deviceConnected = false;
+bool oldDeviceConnected = false;
 uint32_t value = 0;
+bool data_changed = false;
 
-// server and characteristic uuid
-#define SERVICE_UUID          "6df57bea-58e0-11ec-bf63-0242ac130002"
-#define CHARACTERISTIC_UUID   "6df57e1a-58e0-11ec-bf63-0242ac130002"
 
-// Callbacks for connecting and disconnecting
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       deviceConnected = true;
@@ -44,33 +46,74 @@ class MyServerCallbacks: public BLEServerCallbacks {
 };
 
 
+
 void setup() {
-  // Initialize serial to Teensy and host
   Serial.begin(115200);
+
+  // Connection to MFM for 
   Serial1.begin(115200);
 
-  // Create a BLE device
-  BLEDevice::init("Spaulding MFM");
+  // Create the BLE Device
+  BLEDevice::init("Spaulding-BLE");
 
-  // create BLE server
-  pserver = BLEDevice::createServer();
+  // Create the BLE Server
+  pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
-  // Create BLE Service
+  // Create the BLE Service
   BLEService *pService = pServer->createService(SERVICE_UUID);
 
-  // Create a BLE Characteristic - just need to notify
-  pCharacteristic - pService->createCharacteristic(
-      CHARACTERIC_UUID,
-      BLECharacteristic::PROPERTY_READ |
-      BLECharcateristic::PROPERTY_NOTIFY
-    );
+  // Create a BLE Characteristic
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID,
+                      BLECharacteristic::PROPERTY_READ   |
+                      BLECharacteristic::PROPERTY_WRITE  |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+
+  // https://www.bluetooth.com/spec2ifications/gatt/viewer?attributeXmlFile=org.bluetooth.descriptor.gatt.client_characteristic_configuration.xml
+  // Create a BLE Descriptor
+  pCharacteristic->addDescriptor(new BLE2902());
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
+  BLEDevice::startAdvertising();
+  Serial.println("\nWaiting a client connection to notify...");
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-//  if(Serial1.available())
-//    Serial.write(Serial1.read());
-SerialBT.write(1);
-
+    if(Serial1.available()>0)
+    {
+      value = Serial1.parseInt();
+      data_changed = true;
+    }
+  
+    // notify changed value
+    if (deviceConnected && data_changed) {
+        pCharacteristic->setValue(value);
+        pCharacteristic->notify();
+        delay(3); // bluetooth stack will go into congestion, if too many packets are sent, in 6 hours test i was able to go as low as 3ms
+        Serial.print("Notifying: ");
+        Serial.println(value);
+        data_changed = false;
+    }
+    // disconnecting
+    if (!deviceConnected && oldDeviceConnected) {
+        delay(500); // give the bluetooth stack the chance to get things ready
+        pServer->startAdvertising(); // restart advertising
+        Serial.println("start advertising");
+        oldDeviceConnected = deviceConnected;
+    }
+    // connecting
+    if (deviceConnected && !oldDeviceConnected) {
+        // do stuff here on connecting
+        oldDeviceConnected = deviceConnected;
+    }
 }

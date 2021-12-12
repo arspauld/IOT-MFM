@@ -43,6 +43,7 @@ uint32_t fft_buff_0[FFT_SIZE];            // FFT ping pong buffer 0
 uint32_t fft_buff_1[FFT_SIZE];            // FFT ping pong buffer 1
 uint32_t *sample_fft_buff = fft_buff_0;   // FFT buffer currently receiving samples
 uint32_t *process_fft_buff = fft_buff_0;  // FFT buffer currently being processed
+uint32_t median_frequency = 0;            // Tracks the current median frequency per repetition
 
 double vreal[FFT_SIZE];                   // real component of fft function
 double vimag[FFT_SIZE];                   // imaginary component of fft function
@@ -94,7 +95,7 @@ void setup() {
   while(!Serial);  
 
   // Initialize serial for bluetooth
-//  Serial7.begin(115200);
+  Serial7.begin(115200);
 //  while(!Serial7);
 
 //  Serial.println("Initializing SD card...");
@@ -141,6 +142,7 @@ void loop() {
   if(process_RMS)
   {
     val = calculate_RMS(process_RMS_buff, RMS_SIZE) ;
+//    Serial.println(val);
     if(val > 8)
     {
       Serial.println("REP");
@@ -200,8 +202,9 @@ void loop() {
 
 
     // Calculate median frequency
-    Serial.println(calculate_median_frequency(vreal, FFT_SIZE, EMG_FREQ));
-//    Serial7.println(calculate_median_frequency(vreal, FFT_SIZE, EMG_FREQ));
+    median_frequency = calculate_median_frequency(vreal, FFT_SIZE, EMG_FREQ);
+    Serial.println(median_frequency);
+    Serial7.print(median_frequency);
 
 
     // clear the buffers :(
