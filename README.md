@@ -18,23 +18,30 @@ however development of this application was not completed.
                 - Sampling done using ADC0 and adc_isr at 1024Hz sampling rate
                 - Samples loaded into several ping pong buffers used to calculate the RMS and median frequencies
                 - RMS calculated every ~0.125 seconds
-                - If repetition discovered using threshold detection then median frequency is calculated for the previous 1024 samples
-                - Median frequency calculated using magnitude of windowed FFT, averaging the magnitude of each frequency bin by dividing the sum of all frequencies
-        -> esp-transmit
-            -> esp.ino
-                - TODO
-        -> app2
-            -> MainActivity.java
-                - TODO
-            -> PSoCLedService.java
-                - TODO
+                - If repetition discovered using threshold detection then median frequency is calculated for the 
+                  previous 1024 samples
+                - Median frequency calculated using magnitude of windowed FFT, averaging the magnitude of each 
+                  frequency bin by dividing the sum of all frequencies
+                - Outuput median frequency over Serial7 to ESP32 bridge
+
     -> ESP Transmit
         -> esp
             -> esp.ino - Arduino script for Huzzah32 Microcontroller intended to allow for 
                bluetooth communication with an android application. The huzzah32 would simply
-               act as a bridge and bluetooth transmitted. Unforutnately the android appliction
-               was not complete at the time of submission but this is an opportunity for future
-               work on the project.
+               act as a bridge and bluetooth transmitted. This is achieved by creating a Bluetooth
+               Low Energy (BLE) service which connects to an Android application. The Android 
+               application subscribes to notifications on the service, allowing the app to consistently
+               read data whenever it is updated. The ESP device monitors Serial1 continuously. Whenever
+               an integer is received over the data stream the current value of the service 
+               characteristic is updated and a notification is pushed to the application.
+    -> app2
+        -> MainActivity.java
+            - Describes the Main Activity and program flow for the android application
+            - Coordinates the user interface and makes calls to the BLE backend
+        -> PSoCLedService.java
+            - Searches for, conncts to, and discovers attributes of the ESP32 BLE service
+            - Acts as the BLE backend for the Android application making call to the GATT API
+              provided by Android
 
 ## Usage
 Below is a diagram showing the hardware connections that should be made to utilize this system.
@@ -54,7 +61,7 @@ Below is a diagram showing the hardware connections that should be made to utili
     |GND      |<------->| GND               |
     ----------          ---------------------
 
-Mounting of the Teens4.1 and Huzzah32 Bluetooth can be done in a breadboard which simplifies the creation of connections. The Myoware Muscle Sensor should be placed on the bicep with one electrode centered along the muscle and the other electrode in line with the muscle fibers in the direction of the elbow. The reference electrode should be placed in a location that will not be affected by muscle activation. Testing has shown that placing the electrode on the inner side of the arm is an effective reference point.
+Mounting of the Teensy4.1 and Huzzah32 Bluetooth can be done in a breadboard which simplifies the creation of connections. The Myoware Muscle Sensor should be placed on the bicep with one electrode centered along the muscle and the other electrode in line with the muscle fibers in the direction of the elbow. The reference electrode should be placed in a location that will not be affected by muscle activation. Testing has shown that placing the electrode on the inner side of the arm is an effective reference point.
 
 Once the Myoware sensor is mounted and connected to the Teensy4.1 the device should be turned on. The Teensy should be flashed using Teensyduino IDE and teensy_sd_sample.ino. From there either the Serial Monitor or the Serial Plotter can be launced from the Teensyduino IDE. The Serial monitor will output whenever a repetition is performed and the median frequency for that repitition. The Serial Plotter will display in realtime the median frequencies being received for each repetition. 
 
